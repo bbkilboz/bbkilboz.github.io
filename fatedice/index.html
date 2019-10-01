@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Fate Dice</title>
+
+    <meta charset="utf-8">
+    <meta http-equiv="x-ua-compatible" content="ie=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+
+    <meta name="application-name" content="Fate Dice">
+    <meta name="description" content="A simple Fate RPG dice roller">
+
+    <meta property="og:title" content="Fate Dice">
+    <meta property="og:description" content="A simple Fate RPG dice roller">
+    <meta property="og:image" content="https://matita.github.io/fatedice/favicon-152.png">
+
+    <link rel="icon" href="favicon.png" sizes="16x16" type="image/png">
+    <link rel="icon" href="favicon-152.png" sizes="152x152" type="image/png">
+    <link rel="apple-touch-icon" href="favicon-152.png">
+
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <link rel="manifest" href="manifest.json">
+
+    <link rel="stylesheet" href="fate-core-glyphs.css">
+    <style>
+      html, body {
+        padding: 0;
+        margin: 0;
+        background-color: #009933;
+      }
+      html {
+        height: 100%;
+      }
+      body {
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 2em;
+        color: #999;
+        height: 100%;
+      }
+      a {
+        color: #000;
+        text-decoration: none;
+        border-bottom: 1px dotted #999;
+      }
+      .main {
+        text-align: center;
+        display: flex;
+        flex-direction: column;
+        min-height: 100%;
+      }
+
+      .instructions {
+        margin-bottom: 0;
+      }
+
+      .dice {
+        font-size: 5rem;
+        padding-top: 1rem;
+        padding-bottom: 1rem;
+        max-width: 15rem;
+        margin-left: auto;
+        margin-right: auto;
+        cursor: pointer;
+        color: #555;
+      }
+
+      .die {
+        font-family: 'Fate Core Glyphs', monospace;
+        display: inline-block;
+      }
+
+      .result,
+      .form,
+      .latest {
+        margin-top: 1em;
+        margin-bottom: 1em;
+      }
+
+      .result {
+        color: #555;
+      }
+
+      .result-num + .result-scaled:before {
+        content: ' · ';
+      }
+
+      .roll-btn {
+        padding: 1em;
+      }
+
+      .latest {
+        font-size: .5em;
+        max-width: 15rem;
+        margin-left: auto;
+        margin-right: auto;
+        text-align: left;
+        flex-grow: 1;
+      }
+
+      .latest .result-num {
+        display: inline-block;
+        text-align: right;
+        width: 2em;
+      }
+
+      footer {
+        font-size: .7rem;
+        border-top: 1px solid #eee;
+        padding: 1em;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="main">
+      <h4 class="instructions">Click to re-roll</h4>
+      <div class="dice"></div>
+      <div class="result"></div>
+      <div class="latest"></div>
+
+      <footer>
+        An OBS and ChromaKey friendly version by <a href="https://github.com/matita">bbkilboz</a> &middot; 
+        <a href="https://github.com/bbkilboz/fatedice"> Source code</a><br> 
+        Originally made by <a href="https://github.com/matita">matita</a> &middot;
+        <a href="https://github.com/matita/fatedice"> Original source code</a><br>
+        The Fate Core font is &copy; Evil Hat Productions, LLC and is used with permission. The Four Actions icons were designed by Jeremy Keller.
+      </footer>
+    </div>
+
+    <script src="random.min.js"></script>
+    <script>
+      var latest = JSON.parse(localStorage['fatedice-latest'] || '[]')
+      var latestCount = 10
+      var rollDelay = 100
+      var display = {
+        '-1': '-',
+        '0' : '0',
+        '1' : '+'
+      }
+      var scales = {
+        'en': {
+          '-2': 'terrible',
+          '-1': 'poor',
+          '0' : 'mediocre',
+          '1' : 'average',
+          '2' : 'fair',
+          '3' : 'good',
+          '4' : 'great',
+          '5' : 'superb',
+          '6' : 'fantastic',
+          '7' : 'epic',
+          '8' : 'legendary'
+        },
+        'it': {
+          '-2': 'pessimo',
+          '-1': 'scarso',
+          '0' : 'mediocre',
+          '1' : 'medio',
+          '2' : 'discreto',
+          '3' : 'buono',
+          '4' : 'ottimo',
+          '5' : 'eccellente',
+          '6' : 'fantastico',
+          '7' : 'epico',
+          '8' : 'leggendario'
+        }
+      }
+      var lang = navigator.language
+      var scale = scales[lang] || scales[lang.split('-')[0]] || scales['en']
+      var isRolling = false
+      var rand = new Random()
+      var params = getURIParams()
+      
+      var instructionsDOM = document.querySelector('.instructions')
+      var diceDOM = document.querySelector('.dice')
+      
+      instructionsDOM.onclick = instructionsDOM.ontouchstart = doRoll
+      diceDOM.onclick = diceDOM.ontouchend = doRoll
+      doRoll()
+
+
+      function doRoll() {
+        if (isRolling)
+          return
+        isRolling = true
+        rand = new Random()
+        var rolls = 5
+
+        displayBlankResult()
+        displayLatest()
+        setTimeout(internalRoll, rollDelay)
+
+        function internalRoll() {
+          var results = rollDice()
+          displayDice(results)
+
+          if (--rolls) {
+            setTimeout(internalRoll, rollDelay)
+          } else {
+            isRolling = false
+            displayResult(results)
+            saveResult(results)
+          }
+        }
+      }
+
+      function saveResult(results) {
+        latest.unshift(results.slice())
+        while (latest.length > latestCount)
+          latest.pop()
+        localStorage['fatedice-latest'] = JSON.stringify(latest)
+      }
+
+      function rollDie() {
+        return rand.integer(-1, 1)
+      }
+
+      function rollDieWithEntropy() {
+        var noise = rand.integer(0, 5)
+        for (var i = 0; i < noise; i++)
+          rand.integer(-1, 1)
+        return rand.integer(-1, 1)
+      }
+
+      function rollDieNative() {
+        return Math.floor(Math.random()*3)-1
+      }
+
+      function rollDice(roll) {
+        roll = roll || rollDie
+        var results = []
+        for (var i = 0; i < 4; i++) {
+          results[i] = roll()
+        }
+        return results
+      }
+
+      function sumDice(results) {
+        return results.reduce(function (sum, d) { return sum + d }, 0)
+      }
+
+      function getTextResult (results) {
+        var r = sumDice(results)
+        var scaled = scale[r]
+        return '<span class="result-num">' + (r > 0 ? '+' : '') + r + ' </span>' +
+          '<span class="result-scaled">' + (scale[r] || '---') + '</span>'
+      }
+
+      function displayDice(results) {
+        document.querySelector('.dice').innerHTML = results.map(function(d) {
+          return '<div class="die">' + display[d] + '</div>'
+        }).join('')
+      }
+
+      function displayBlankResult() {
+        document.querySelector('.result').innerHTML = '---'
+      }
+
+      function displayResult(results) {
+        document.querySelector('.result').innerHTML = getTextResult(results)
+      }
+
+      function displayLatest() {
+        document.querySelector('.latest').innerHTML = latest.map(function (r) {
+          return '<div class="latest-item">' + getTextResult(r) + '</div>'
+        }).join('')
+      }
+
+      function getURIParams() {
+        return location.search.substr(1).split('&')
+          .reduce(function (p, e) {
+            e = e.split('=')
+            p[decodeURIComponent(e[0])] = decodeURIComponent(e[1] || '') 
+            return p
+          }, {})
+      }
+
+      if ('testRolls' in params) {
+        window.testRolls = params.testRolls
+        var s = document.createElement('script')
+        s.src = 'distributions.js'
+        document.body.appendChild(s)
+      }
+    </script>
+  </body>
+</html>
